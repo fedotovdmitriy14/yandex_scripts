@@ -1,7 +1,10 @@
 import abc
 import json
+import pickle
 from os.path import exists
 from typing import Any, Optional
+
+import redis
 
 
 class BaseStorage:
@@ -40,6 +43,22 @@ class JsonFileStorage(BaseStorage):
             return {}
 
 
+class RedisStorage(BaseStorage):
+    def __init__(self, redis_connection, dict_name:str):
+        self.redis_connection = redis_connection
+        self.dict_name = dict_name
+
+    def save_state(self, state: dict) -> None:
+        """Сохранить состояние в постоянное хранилище"""
+        state = pickle.dumps(state)
+        self.redis_connection.set(self.dict_name, state)
+
+    def retrieve_state(self) -> dict:
+        """Загрузить состояние локально из постоянного хранилища"""
+        data = self.redis_connection.get(self.dict_name)
+        return pickle.loads(data)
+
+
 class State:
     """
     Класс для хранения состояния при работе с данными, чтобы постоянно не перечитывать данные с начала.
@@ -62,18 +81,29 @@ class State:
         return current_state.get(key)
 
 
+# json state tests
 demo_dict = {'first_name': 'user', 'last_name': 'last_demo_name'}
 
 json_class = JsonFileStorage('state2.json')
-# json_class.save_state(demo_dict)
+json_class.save_state(demo_dict)
 print(json_class.retrieve_state())
 
 state_instance = State(json_class)
 print(state_instance.get_state('first_name'))
 print(state_instance.set_state('first_name', 'TEST'))
 
-json_class_2 = JsonFileStorage()
-state_instance_2 = State(json_class_2)
-print(state_instance.get_state('first_name'))
-print(state_instance.set_state('first_name', 'TEST'))
-print(json_class_2.retrieve_state())
+
+# redis state tests
+r = redis.Redis(
+        host='127.0.0.1',
+        port=6379,
+)
+
+user = {"Name":"Pradeep", "Company":"SCTL", "Address":"Mumbai", "Location":"RCP"}
+
+redis_instance = RedisStorage(r, 'my_dict')
+redis_instance.save_state(user)
+print(redis_instance.retrieve_state())
+
+redis_state_instance = State(redis_instance)
+print(redis_state_instance.get_state('Name'))
